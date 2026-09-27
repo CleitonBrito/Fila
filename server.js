@@ -5,19 +5,61 @@ const crypto = require("crypto");
 const http = require("http");
 const express = require("express");
 const { Server } = require("socket.io");
-
-const { initializeApp, cert } = require("firebase-admin/app");
+const { initializeApp, cert, getApps } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
-const serviceAccount = require("./firebase-service-account.json");
+function inicializarFirebase() {
+    if (getApps().length > 0) {
+        return getFirestore();
+    }
 
-initializeApp({ credential: cert(serviceAccount) });
+    if (
+        process.env.FIREBASE_PROJECT_ID &&
+        process.env.FIREBASE_CLIENT_EMAIL &&
+        process.env.FIREBASE_PRIVATE_KEY
+    ) {
+        console.log("Firebase: usando variáveis de ambiente.");
 
-const db = getFirestore();
+        initializeApp({
+            credential: cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
+            })
+        });
+
+        return getFirestore();
+    }
+
+    try {
+        console.log("Firebase: usando firebase-service-account.json.");
+
+        const serviceAccount = require("./firebase-service-account.json");
+
+        initializeApp({
+            credential: cert(serviceAccount)
+        });
+
+        return getFirestore();
+    } catch (error) {
+        console.error("ERRO: Não foi possível inicializar o Firebase.");
+        console.error("Configure o firebase-service-account.json localmente ou as variáveis FIREBASE_* em produção.");
+        console.error(error);
+        process.exit(1);
+    }
+}
+
+const db = inicializarFirebase();
 
 const app = express();
 const httpServer = http.createServer(app);
-const io = new Server(httpServer);
+
+const io = new Server(httpServer, {
+    cors: {
+        origin: true,
+        credentials: true
+    }
+});
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -26,7 +68,8 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY;
 
 if (!ADMIN_KEY) {
-    console.error("ERRO: ADMIN_KEY não configurada no arquivo .env");
+    console.error("ERRO: ADMIN_KEY não configurada.");
+    console.error("Configure a ADMIN_KEY no arquivo .env local ou nas Environment Variables da Vercel.");
     process.exit(1);
 }
 
@@ -42,6 +85,19 @@ function normalizarNome(nome) {
     return nome.trim().replace(/\s+/g, " ").substring(0, 100);
 }
 
+function validarNome(nome) {
+    if (!nome || typeof nome !== "string") {
+        return false;
+    }
+
+    const nomeNormalizado = normalizarNome(nome);
+
+    return (
+        nomeNormalizado.length >= 2 &&
+        nomeNormalizado.length <= 100
+    );
+}
+
 async function buscarSalaPorPIN(pin) {
     const snapshot = await db
         .collection("salas")
@@ -50,7 +106,9 @@ async function buscarSalaPorPIN(pin) {
         .limit(1)
         .get();
 
-    if (snapshot.empty) return null;
+    if (snapshot.empty) {
+        return null;
+    }
 
     const doc = snapshot.docs[0];
 
@@ -86,15 +144,6 @@ async function emitirFila(roomId) {
     io.to(`room:${roomId}`).emit("fila-atualizada", fila);
 
     return fila;
-}
-
-function validarNome(nome) {
-    if (!nome || typeof nome !== "string") return false;
-
-    const nomeNormalizado = normalizarNome(nome);
-
-    return nomeNormalizado.length >= 2 &&
-           nomeNormalizado.length <= 100;
 }
 
 app.get("/", (req, res) => {
@@ -148,7 +197,6 @@ app.post("/api/admin/criar-sala", async (req, res) => {
             pin,
             adminToken
         });
-
     } catch (error) {
         console.error(error);
 
@@ -201,7 +249,6 @@ app.post("/api/aluno/entrar", async (req, res) => {
             participantToken,
             nome: nomeNormalizado
         });
-
     } catch (error) {
         console.error(error);
 
@@ -214,7 +261,11 @@ app.post("/api/aluno/entrar", async (req, res) => {
 
 app.get("/api/aluno/estado", async (req, res) => {
     try {
-        const { roomId, participantId, participantToken } = req.query;
+        const {
+            roomId,
+            participantId,
+            participantToken
+        } = req.query;
 
         if (!roomId || !participantId || !participantToken) {
             return res.status(400).json({
@@ -252,7 +303,6 @@ app.get("/api/aluno/estado", async (req, res) => {
             nome: aluno.nome,
             naFila: aluno.naFila === true
         });
-
     } catch (error) {
         console.error(error);
 
@@ -268,7 +318,11 @@ io.on("connection", socket => {
 
     socket.on("aluno:entrar-sala", async dados => {
         try {
-            const { roomId, participantId, participantToken } = dados;
+            const {
+                roomId,
+                participantId,
+                participantToken
+            } = dados;
 
             if (!roomId || !participantId || !participantToken) {
                 socket.emit("erro", "Dados inválidos.");
@@ -296,6 +350,7 @@ io.on("connection", socket => {
             }
 
             socket.join(`room:${roomId}`);
+
             socket.data.role = "aluno";
             socket.data.roomId = roomId;
             socket.data.participantId = participantId;
@@ -308,7 +363,6 @@ io.on("connection", socket => {
                 nome: aluno.nome,
                 naFila: aluno.naFila === true
             });
-
         } catch (error) {
             console.error(error);
             socket.emit("erro", "Erro ao conectar à sala.");
@@ -317,121 +371,197 @@ io.on("connection", socket => {
 
     socket.on("admin:entrar-sala", async dados => {
         try {
-            const { roomId, adminToken } = dados;
+            const {
+                roomId,
+                adminToken
+            } = dados;
 
             if (!roomId || !adminToken) {
-                socket.emit("erro", "Dados administrativos inválidos.");
+                socket.emit(
+                    "erro",
+                    "Dados administrativos inválidos."
+                );
                 return;
             }
 
-            const salaRef = db.collection("salas").doc(roomId);
+            const salaRef = db
+                .collection("salas")
+                .doc(roomId);
+
             const salaDoc = await salaRef.get();
 
             if (!salaDoc.exists) {
-                socket.emit("erro", "Sala não encontrada.");
+                socket.emit(
+                    "erro",
+                    "Sala não encontrada."
+                );
                 return;
             }
 
             const sala = salaDoc.data();
 
             if (sala.adminToken !== adminToken) {
-                socket.emit("erro", "Token administrativo inválido.");
+                socket.emit(
+                    "erro",
+                    "Token administrativo inválido."
+                );
                 return;
             }
 
             socket.join(`room:${roomId}`);
+
             socket.data.role = "admin";
             socket.data.roomId = roomId;
 
             const fila = await obterFila(roomId);
 
-            socket.emit("fila-atualizada", fila);
-            socket.emit("admin-conectado", { pin: sala.pin });
+            socket.emit(
+                "fila-atualizada",
+                fila
+            );
 
-        } catch (error) {
-            console.error(error);
-            socket.emit("erro", "Erro ao conectar administrador.");
-        }
-    });
-
-    socket.on("aluno:quero", async () => {
-        try {
-            if (socket.data.role !== "aluno") return;
-
-            const roomId = socket.data.roomId;
-            const participantId = socket.data.participantId;
-
-            const salaRef = db.collection("salas").doc(roomId);
-
-            const alunoRef = salaRef
-                .collection("alunos")
-                .doc(participantId);
-
-            const alunoDoc = await alunoRef.get();
-
-            if (!alunoDoc.exists) {
-                socket.emit("erro", "Aluno não encontrado.");
-                return;
-            }
-
-            const aluno = alunoDoc.data();
-
-            if (aluno.naFila === true) {
-                socket.emit("erro", "Você já está na fila.");
-                return;
-            }
-
-            await db.runTransaction(async transaction => {
-                const salaDoc = await transaction.get(salaRef);
-                const alunoDoc = await transaction.get(alunoRef);
-
-                if (!salaDoc.exists) {
-                    throw new Error("Sala não encontrada.");
+            socket.emit(
+                "admin-conectado",
+                {
+                    pin: sala.pin
                 }
-
-                if (!alunoDoc.exists) {
-                    throw new Error("Aluno não encontrado.");
-                }
-
-                const alunoAtual = alunoDoc.data();
-
-                if (alunoAtual.naFila === true) {
-                    throw new Error("Aluno já está na fila.");
-                }
-
-                const salaAtual = salaDoc.data();
-                const ordem = salaAtual.proximaOrdem || 1;
-
-                const filaRef = salaRef
-                    .collection("fila")
-                    .doc(participantId);
-
-                transaction.set(filaRef, {
-                    participantId,
-                    nome: alunoAtual.nome,
-                    ordem,
-                    entrouEm: FieldValue.serverTimestamp()
-                });
-
-                transaction.update(alunoRef, {
-                    naFila: true
-                });
-
-                transaction.update(salaRef, {
-                    proximaOrdem: ordem + 1
-                });
-            });
-
-            socket.emit("entrou-na-fila");
-
-            await emitirFila(roomId);
-
+            );
         } catch (error) {
             console.error(error);
 
             socket.emit(
                 "erro",
-                error.message || "Não foi possível entrar na fila."
+                "Erro ao conectar à sala."
+            );
+        }
+    });
+
+    socket.on("aluno:quero", async () => {
+        try {
+            if (socket.data.role !== "aluno") {
+                return;
+            }
+
+            const roomId =
+                socket.data.roomId;
+
+            const participantId =
+                socket.data.participantId;
+
+            const salaRef = db
+                .collection("salas")
+                .doc(roomId);
+
+            const alunoRef = salaRef
+                .collection("alunos")
+                .doc(participantId);
+
+            const alunoDoc =
+                await alunoRef.get();
+
+            if (!alunoDoc.exists) {
+                socket.emit(
+                    "erro",
+                    "Aluno não encontrado."
+                );
+                return;
+            }
+
+            const aluno =
+                alunoDoc.data();
+
+            if (aluno.naFila === true) {
+                socket.emit(
+                    "erro",
+                    "Você já está na fila."
+                );
+                return;
+            }
+
+            await db.runTransaction(
+                async transaction => {
+                    const salaDoc =
+                        await transaction.get(
+                            salaRef
+                        );
+
+                    const alunoDoc =
+                        await transaction.get(
+                            alunoRef
+                        );
+
+                    if (!salaDoc.exists) {
+                        throw new Error(
+                            "Sala não encontrada."
+                        );
+                    }
+
+                    if (!alunoDoc.exists) {
+                        throw new Error(
+                            "Aluno não encontrado."
+                        );
+                    }
+
+                    const alunoAtual =
+                        alunoDoc.data();
+
+                    if (alunoAtual.naFila === true) {
+                        throw new Error(
+                            "Aluno já está na fila."
+                        );
+                    }
+
+                    const salaAtual =
+                        salaDoc.data();
+
+                    const ordem =
+                        salaAtual.proximaOrdem || 1;
+
+                    const filaRef =
+                        salaRef
+                            .collection("fila")
+                            .doc(participantId);
+
+                    transaction.set(
+                        filaRef,
+                        {
+                            participantId,
+                            nome: alunoAtual.nome,
+                            ordem,
+                            entrouEm:
+                                FieldValue.serverTimestamp()
+                        }
+                    );
+
+                    transaction.update(
+                        alunoRef,
+                        {
+                            naFila: true
+                        }
+                    );
+
+                    transaction.update(
+                        salaRef,
+                        {
+                            proximaOrdem:
+                                ordem + 1
+                        }
+                    );
+                }
+            );
+
+            socket.emit(
+                "entrou-na-fila"
+            );
+
+            await emitirFila(roomId);
+        } catch (error) {
+            console.error(error);
+
+            socket.emit(
+                "erro",
+                error.message ||
+                "Não foi possível entrar na fila."
             );
         }
     });
@@ -446,25 +576,38 @@ io.on("connection", socket => {
                 return;
             }
 
-            const roomId = socket.data.roomId;
+            const roomId =
+                socket.data.roomId;
 
             const salaRef = db
                 .collection("salas")
                 .doc(roomId);
 
-            const alunosSnapshot = await salaRef
-                .collection("alunos")
-                .where("naFila", "==", true)
-                .get();
+            const alunosSnapshot =
+                await salaRef
+                    .collection("alunos")
+                    .where(
+                        "naFila",
+                        "==",
+                        true
+                    )
+                    .get();
 
-            const filaSnapshot = await salaRef
-                .collection("fila")
-                .get();
+            const filaSnapshot =
+                await salaRef
+                    .collection("fila")
+                    .get();
 
-            const batch = db.batch();
+            const batch =
+                db.batch();
 
             alunosSnapshot.forEach(doc => {
-                batch.update(doc.ref, { naFila: false });
+                batch.update(
+                    doc.ref,
+                    {
+                        naFila: false
+                    }
+                );
             });
 
             filaSnapshot.forEach(doc => {
@@ -473,9 +616,14 @@ io.on("connection", socket => {
 
             await batch.commit();
 
-            io.to(`room:${roomId}`).emit("fila-limpa");
-            io.to(`room:${roomId}`).emit("fila-atualizada", []);
+            io.to(`room:${roomId}`)
+                .emit("fila-limpa");
 
+            io.to(`room:${roomId}`)
+                .emit(
+                    "fila-atualizada",
+                    []
+                );
         } catch (error) {
             console.error(error);
 
@@ -487,16 +635,21 @@ io.on("connection", socket => {
     });
 
     socket.on("disconnect", () => {
-        console.log("Socket desconectado:", socket.id);
+        console.log(
+            "Socket desconectado:",
+            socket.id
+        );
     });
 });
 
-httpServer.listen(PORT, () => {
-    console.log("");
-    console.log("======================================");
-    console.log(" SISTEMA DE FILA DE ALUNOS");
-    console.log("======================================");
-    console.log(`Servidor: http://localhost:${PORT}`);
-    console.log("======================================");
-    console.log("");
-});
+if (require.main === module) {
+    httpServer.listen(PORT, () => {
+        console.log("======================================");
+        console.log(" SISTEMA DE FILA DE ALUNOS");
+        console.log("======================================");
+        console.log(`Servidor: http://localhost:${PORT}`);
+        console.log("======================================");
+    });
+}
+
+module.exports = httpServer;
