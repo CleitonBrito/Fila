@@ -1,0 +1,196 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f4f6f8;
+    color: #222;
+}
+
+.container {
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 30px 20px;
+}
+
+h1 {
+    margin-top: 0;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+.subtitulo {
+    color: #666;
+}
+
+.card {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    margin-top: 18px;
+    margin-bottom: 7px;
+    font-weight: bold;
+}
+
+input {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 18px;
+}
+
+input:focus {
+    outline: none;
+    border-color: #555;
+}
+
+.botao {
+    display: block;
+    width: 100%;
+    padding: 16px;
+    margin-top: 20px;
+    border: none;
+    border-radius: 8px;
+    text-align: center;
+    text-decoration: none;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.botao-principal {
+    background: #222;
+    color: white;
+}
+
+.botao-principal:hover {
+    background: #444;
+}
+
+.botao-secundario {
+    background: white;
+    color: #222;
+    border: 1px solid #ccc;
+}
+
+.botao-perigo {
+    background: #b42318;
+    color: white;
+}
+
+.botao-perigo:hover {
+    background: #8f1d14;
+}
+
+.menu-principal {
+    margin-top: 30px;
+}
+
+.mensagem {
+    margin-top: 15px;
+    color: #b42318;
+    font-weight: bold;
+}
+
+.oculto {
+    display: none !important;
+}
+
+.botao-eu-quero {
+    width: 100%;
+    min-height: 260px;
+    border: none;
+    border-radius: 20px;
+    background: green;
+    color: white;
+    font-size: 48px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+}
+
+.botao-eu-quero:hover {
+    background: rgb(2, 161, 2);
+}
+
+.botao-eu-quero:disabled {
+    background: #999;
+    cursor: not-allowed;
+}
+
+.posicao {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.cabecalho-admin {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.pin {
+    font-size: 52px;
+    font-weight: bold;
+    letter-spacing: 8px;
+}
+
+#contador {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.lista-fila {
+    margin: 0;
+    padding-left: 30px;
+}
+
+.lista-fila li {
+    padding: 15px 10px;
+    border-bottom: 1px solid #eee;
+    font-size: 22px;
+}
+
+.fila-vazia {
+    color: #777;
+}
+
+.status-conexao {
+    text-align: center;
+    color: #666;
+    margin-top: 20px;
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 20px 15px;
+    }
+
+    .card {
+        padding: 20px;
+    }
+
+    .botao-eu-quero {
+        min-height: 220px;
+        font-size: 38px;
+    }
+
+    .pin {
+        font-size: 38px;
+    }
+}

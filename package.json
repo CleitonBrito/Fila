@@ -1,0 +1,19 @@
+{
+  "name": "fila-alunos",
+  "version": "1.0.0",
+  "description": "Sistema de fila virtual de alunos usando Socket.IO e Firebase Firestore",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.5.0",
+    "socket.io": "^4.8.1"
+  }
+}

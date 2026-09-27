@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrador - Fila</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <main class="container">
+
+        <section id="telaCriar" class="card">
+            <h1>Administrador</h1>
+            <p>Crie uma sala para iniciar a fila.</p>
+
+            <label for="adminKey">
+                Chave administrativa
+            </label>
+
+            <input
+                type="password"
+                id="adminKey"
+                placeholder="Digite a chave"
+            >
+
+            <button id="btnCriarSala" class="botao botao-principal">
+                Criar sala
+            </button>
+
+            <p id="mensagemAdmin" class="mensagem"></p>
+        </section>
+
+        <section id="telaAdmin" class="oculto">
+
+            <div class="cabecalho-admin">
+                <div>
+                    <h1>Sala</h1>
+                    <div id="pinSala" class="pin">----</div>
+                </div>
+
+                <div>
+                    <span id="contador">0 alunos</span>
+                </div>
+            </div>
+
+            <div class="card fila-card">
+                <h2>Fila</h2>
+
+                <ol id="listaFila" class="lista-fila"></ol>
+
+                <p id="filaVazia" class="fila-vazia">
+                    Ninguém está na fila.
+                </p>
+            </div>
+
+            <button id="btnLimpar" class="botao botao-perigo">
+                LIMPAR FILA
+            </button>
+
+            <p id="statusConexao" class="status-conexao">
+                Conectando...
+            </p>
+
+        </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/admin.js"></script>
+</body>
+</html>

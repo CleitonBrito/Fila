@@ -1,0 +1,502 @@
+require("dotenv").config();
+
+const path = require("path");
+const crypto = require("crypto");
+const http = require("http");
+const express = require("express");
+const { Server } = require("socket.io");
+
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+
+const serviceAccount = require("./firebase-service-account.json");
+
+initializeApp({ credential: cert(serviceAccount) });
+
+const db = getFirestore();
+
+const app = express();
+const httpServer = http.createServer(app);
+const io = new Server(httpServer);
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+const PORT = process.env.PORT || 3000;
+const ADMIN_KEY = process.env.ADMIN_KEY;
+
+if (!ADMIN_KEY) {
+    console.error("ERRO: ADMIN_KEY não configurada no arquivo .env");
+    process.exit(1);
+}
+
+function gerarPIN() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+function gerarToken() {
+    return crypto.randomBytes(32).toString("hex");
+}
+
+function normalizarNome(nome) {
+    return nome.trim().replace(/\s+/g, " ").substring(0, 100);
+}
+
+async function buscarSalaPorPIN(pin) {
+    const snapshot = await db
+        .collection("salas")
+        .where("pin", "==", pin)
+        .where("ativa", "==", true)
+        .limit(1)
+        .get();
+
+    if (snapshot.empty) return null;
+
+    const doc = snapshot.docs[0];
+
+    return {
+        id: doc.id,
+        ref: doc.ref,
+        data: doc.data()
+    };
+}
+
+async function obterFila(roomId) {
+    const snapshot = await db
+        .collection("salas")
+        .doc(roomId)
+        .collection("fila")
+        .orderBy("ordem", "asc")
+        .get();
+
+    return snapshot.docs.map(doc => {
+        const data = doc.data();
+
+        return {
+            id: doc.id,
+            nome: data.nome,
+            ordem: data.ordem
+        };
+    });
+}
+
+async function emitirFila(roomId) {
+    const fila = await obterFila(roomId);
+
+    io.to(`room:${roomId}`).emit("fila-atualizada", fila);
+
+    return fila;
+}
+
+function validarNome(nome) {
+    if (!nome || typeof nome !== "string") return false;
+
+    const nomeNormalizado = normalizarNome(nome);
+
+    return nomeNormalizado.length >= 2 &&
+           nomeNormalizado.length <= 100;
+}
+
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.post("/api/admin/criar-sala", async (req, res) => {
+    try {
+        const { adminKey } = req.body;
+
+        if (adminKey !== ADMIN_KEY) {
+            return res.status(401).json({
+                sucesso: false,
+                mensagem: "Chave administrativa inválida."
+            });
+        }
+
+        let pin;
+        let salaExistente = true;
+
+        while (salaExistente) {
+            pin = gerarPIN();
+
+            const consulta = await db
+                .collection("salas")
+                .where("pin", "==", pin)
+                .where("ativa", "==", true)
+                .limit(1)
+                .get();
+
+            salaExistente = !consulta.empty;
+        }
+
+        const roomId = crypto.randomUUID();
+        const adminToken = gerarToken();
+
+        await db
+            .collection("salas")
+            .doc(roomId)
+            .set({
+                pin,
+                ativa: true,
+                adminToken,
+                proximaOrdem: 1,
+                criadaEm: FieldValue.serverTimestamp()
+            });
+
+        return res.json({
+            sucesso: true,
+            roomId,
+            pin,
+            adminToken
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            sucesso: false,
+            mensagem: "Erro ao criar sala."
+        });
+    }
+});
+
+app.post("/api/aluno/entrar", async (req, res) => {
+    try {
+        const { pin, nome } = req.body;
+
+        if (!pin || !validarNome(nome)) {
+            return res.status(400).json({
+                sucesso: false,
+                mensagem: "Informe o PIN e um nome válido."
+            });
+        }
+
+        const sala = await buscarSalaPorPIN(pin.toString().trim());
+
+        if (!sala) {
+            return res.status(404).json({
+                sucesso: false,
+                mensagem: "Sala não encontrada ou encerrada."
+            });
+        }
+
+        const nomeNormalizado = normalizarNome(nome);
+        const participantId = crypto.randomUUID();
+        const participantToken = gerarToken();
+
+        await sala.ref
+            .collection("alunos")
+            .doc(participantId)
+            .set({
+                nome: nomeNormalizado,
+                token: participantToken,
+                entrouEm: FieldValue.serverTimestamp(),
+                naFila: false
+            });
+
+        return res.json({
+            sucesso: true,
+            roomId: sala.id,
+            pin: sala.data.pin,
+            participantId,
+            participantToken,
+            nome: nomeNormalizado
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            sucesso: false,
+            mensagem: "Erro ao entrar na sala."
+        });
+    }
+});
+
+app.get("/api/aluno/estado", async (req, res) => {
+    try {
+        const { roomId, participantId, participantToken } = req.query;
+
+        if (!roomId || !participantId || !participantToken) {
+            return res.status(400).json({
+                sucesso: false,
+                mensagem: "Dados incompletos."
+            });
+        }
+
+        const alunoRef = db
+            .collection("salas")
+            .doc(roomId)
+            .collection("alunos")
+            .doc(participantId);
+
+        const alunoDoc = await alunoRef.get();
+
+        if (!alunoDoc.exists) {
+            return res.status(404).json({
+                sucesso: false,
+                mensagem: "Aluno não encontrado."
+            });
+        }
+
+        const aluno = alunoDoc.data();
+
+        if (aluno.token !== participantToken) {
+            return res.status(401).json({
+                sucesso: false,
+                mensagem: "Token inválido."
+            });
+        }
+
+        return res.json({
+            sucesso: true,
+            nome: aluno.nome,
+            naFila: aluno.naFila === true
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            sucesso: false,
+            mensagem: "Erro ao consultar estado."
+        });
+    }
+});
+
+io.on("connection", socket => {
+    console.log("Socket conectado:", socket.id);
+
+    socket.on("aluno:entrar-sala", async dados => {
+        try {
+            const { roomId, participantId, participantToken } = dados;
+
+            if (!roomId || !participantId || !participantToken) {
+                socket.emit("erro", "Dados inválidos.");
+                return;
+            }
+
+            const alunoRef = db
+                .collection("salas")
+                .doc(roomId)
+                .collection("alunos")
+                .doc(participantId);
+
+            const alunoDoc = await alunoRef.get();
+
+            if (!alunoDoc.exists) {
+                socket.emit("erro", "Aluno não encontrado.");
+                return;
+            }
+
+            const aluno = alunoDoc.data();
+
+            if (aluno.token !== participantToken) {
+                socket.emit("erro", "Token inválido.");
+                return;
+            }
+
+            socket.join(`room:${roomId}`);
+            socket.data.role = "aluno";
+            socket.data.roomId = roomId;
+            socket.data.participantId = participantId;
+
+            const fila = await obterFila(roomId);
+
+            socket.emit("fila-atualizada", fila);
+
+            socket.emit("conectado", {
+                nome: aluno.nome,
+                naFila: aluno.naFila === true
+            });
+
+        } catch (error) {
+            console.error(error);
+            socket.emit("erro", "Erro ao conectar à sala.");
+        }
+    });
+
+    socket.on("admin:entrar-sala", async dados => {
+        try {
+            const { roomId, adminToken } = dados;
+
+            if (!roomId || !adminToken) {
+                socket.emit("erro", "Dados administrativos inválidos.");
+                return;
+            }
+
+            const salaRef = db.collection("salas").doc(roomId);
+            const salaDoc = await salaRef.get();
+
+            if (!salaDoc.exists) {
+                socket.emit("erro", "Sala não encontrada.");
+                return;
+            }
+
+            const sala = salaDoc.data();
+
+            if (sala.adminToken !== adminToken) {
+                socket.emit("erro", "Token administrativo inválido.");
+                return;
+            }
+
+            socket.join(`room:${roomId}`);
+            socket.data.role = "admin";
+            socket.data.roomId = roomId;
+
+            const fila = await obterFila(roomId);
+
+            socket.emit("fila-atualizada", fila);
+            socket.emit("admin-conectado", { pin: sala.pin });
+
+        } catch (error) {
+            console.error(error);
+            socket.emit("erro", "Erro ao conectar administrador.");
+        }
+    });
+
+    socket.on("aluno:quero", async () => {
+        try {
+            if (socket.data.role !== "aluno") return;
+
+            const roomId = socket.data.roomId;
+            const participantId = socket.data.participantId;
+
+            const salaRef = db.collection("salas").doc(roomId);
+
+            const alunoRef = salaRef
+                .collection("alunos")
+                .doc(participantId);
+
+            const alunoDoc = await alunoRef.get();
+
+            if (!alunoDoc.exists) {
+                socket.emit("erro", "Aluno não encontrado.");
+                return;
+            }
+
+            const aluno = alunoDoc.data();
+
+            if (aluno.naFila === true) {
+                socket.emit("erro", "Você já está na fila.");
+                return;
+            }
+
+            await db.runTransaction(async transaction => {
+                const salaDoc = await transaction.get(salaRef);
+                const alunoDoc = await transaction.get(alunoRef);
+
+                if (!salaDoc.exists) {
+                    throw new Error("Sala não encontrada.");
+                }
+
+                if (!alunoDoc.exists) {
+                    throw new Error("Aluno não encontrado.");
+                }
+
+                const alunoAtual = alunoDoc.data();
+
+                if (alunoAtual.naFila === true) {
+                    throw new Error("Aluno já está na fila.");
+                }
+
+                const salaAtual = salaDoc.data();
+                const ordem = salaAtual.proximaOrdem || 1;
+
+                const filaRef = salaRef
+                    .collection("fila")
+                    .doc(participantId);
+
+                transaction.set(filaRef, {
+                    participantId,
+                    nome: alunoAtual.nome,
+                    ordem,
+                    entrouEm: FieldValue.serverTimestamp()
+                });
+
+                transaction.update(alunoRef, {
+                    naFila: true
+                });
+
+                transaction.update(salaRef, {
+                    proximaOrdem: ordem + 1
+                });
+            });
+
+            socket.emit("entrou-na-fila");
+
+            await emitirFila(roomId);
+
+        } catch (error) {
+            console.error(error);
+
+            socket.emit(
+                "erro",
+                error.message || "Não foi possível entrar na fila."
+            );
+        }
+    });
+
+    socket.on("admin:limpar-fila", async () => {
+        try {
+            if (socket.data.role !== "admin") {
+                socket.emit(
+                    "erro",
+                    "Apenas o administrador pode limpar a fila."
+                );
+                return;
+            }
+
+            const roomId = socket.data.roomId;
+
+            const salaRef = db
+                .collection("salas")
+                .doc(roomId);
+
+            const alunosSnapshot = await salaRef
+                .collection("alunos")
+                .where("naFila", "==", true)
+                .get();
+
+            const filaSnapshot = await salaRef
+                .collection("fila")
+                .get();
+
+            const batch = db.batch();
+
+            alunosSnapshot.forEach(doc => {
+                batch.update(doc.ref, { naFila: false });
+            });
+
+            filaSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            await batch.commit();
+
+            io.to(`room:${roomId}`).emit("fila-limpa");
+            io.to(`room:${roomId}`).emit("fila-atualizada", []);
+
+        } catch (error) {
+            console.error(error);
+
+            socket.emit(
+                "erro",
+                "Erro ao limpar a fila."
+            );
+        }
+    });
+
+    socket.on("disconnect", () => {
+        console.log("Socket desconectado:", socket.id);
+    });
+});
+
+httpServer.listen(PORT, () => {
+    console.log("");
+    console.log("======================================");
+    console.log(" SISTEMA DE FILA DE ALUNOS");
+    console.log("======================================");
+    console.log(`Servidor: http://localhost:${PORT}`);
+    console.log("======================================");
+    console.log("");
+});

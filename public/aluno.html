@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aluno - Fila</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <main class="container">
+
+        <section id="telaEntrada" class="card">
+            <h1>Entrar na sala</h1>
+
+            <form id="formEntrada">
+                <label for="pin">PIN da sala</label>
+                <input
+                    type="text"
+                    id="pin"
+                    maxlength="4"
+                    inputmode="numeric"
+                    placeholder="Ex.: 4827"
+                    required
+                >
+
+                <label for="nome">Seu nome</label>
+                <input
+                    type="text"
+                    id="nome"
+                    maxlength="100"
+                    placeholder="Digite seu nome"
+                    required
+                >
+
+                <button type="submit" class="botao botao-principal">
+                    Entrar
+                </button>
+            </form>
+
+            <p id="mensagemEntrada" class="mensagem"></p>
+        </section>
+
+        <section id="telaSala" class="oculto">
+
+            <div class="card">
+                <h1 id="nomeAluno"></h1>
+
+                <p>Você está na sala.</p>
+
+                <p id="statusAluno">
+                    Você ainda não entrou na fila.
+                </p>
+            </div>
+
+            <button id="btnQuero" class="botao-eu-quero">
+                EU QUERO
+            </button>
+
+            <div id="posicaoAluno" class="posicao"></div>
+
+            <p id="mensagemSala" class="mensagem"></p>
+
+        </section>
+
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/aluno.js"></script>
+</body>
+</html>
