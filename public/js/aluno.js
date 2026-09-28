@@ -126,6 +126,11 @@ function mostrarSala() {
     atualizarBotao();
 }
 
+function mostrarInicio(){
+    telaEntrada.classList.remove("oculto");
+    telaSala.classList.add("oculto");
+}
+
 function conectarSocket() {
     if (!socket.connected) {
         socket.connect();
@@ -158,6 +163,16 @@ socket.on("entrou-na-fila", () => {
 
     mensagemSala.textContent =
         "Você entrou na fila.";
+});
+
+socket.on("sala-encerrada", () => {
+    console.log("Entrou aqui!");
+
+    localStorage.removeItem("filaAlunoSessao");
+    posicaoAluno.textContent = "";
+    inputPin.value = "";
+    atualizarBotao();
+    mostrarInicio();
 });
 
 socket.on("fila-limpa", () => {

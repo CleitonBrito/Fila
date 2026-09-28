@@ -355,14 +355,14 @@ io.on("connection", socket => {
             socket.data.roomId = roomId;
             socket.data.participantId = participantId;
 
-            const fila = await obterFila(roomId);
-
-            socket.emit("fila-atualizada", fila);
 
             socket.emit("conectado", {
                 nome: aluno.nome,
                 naFila: aluno.naFila === true
             });
+            const fila = await obterFila(roomId);
+
+            socket.emit("fila-atualizada", fila);
         } catch (error) {
             console.error(error);
             socket.emit("erro", "Erro ao conectar à sala.");
@@ -433,6 +433,37 @@ io.on("connection", socket => {
                 "erro",
                 "Erro ao conectar à sala."
             );
+        }
+    });
+
+    socket.on("admin:encerrar-sala", async () => {
+
+        try {
+            if (socket.data.role !== "admin") {
+                socket.emit(
+                    "erro",
+                    "Apenas o administrador pode encerrar a sala."
+                );
+                return
+            }
+
+            const roomId = socket.data.roomId;
+
+            const salaRef = db
+                .collection("salas");
+
+            const snapshot = await salaRef.get();
+            const batch = db.batch()
+
+            snapshot.forEach((doc) => {
+                batch.delete(doc.ref);
+            })
+            await batch.commit();
+            io.to(`room:${roomId}`).emit("sala-encerrada");
+
+        } catch (error) {
+            console.error(error);
+            socket.emit("erro", "Erro ao encerrar a sala");
         }
     });
 

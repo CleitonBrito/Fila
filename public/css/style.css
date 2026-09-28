@@ -75,6 +75,20 @@ input:focus {
     color: white;
 }
 
+.btn-encerrar {
+    text-align: center;
+    min-width: 100px;
+    height: 40px;
+    font-size: 12px;
+    color: white;
+    background-color: #8f1d14;
+    margin-bottom: 20px;
+    padding: 0 20px;
+}
+.btn-encerrar:hover {
+    background-color: #b42318;
+}
+
 .botao-principal:hover {
     background: #444;
 }

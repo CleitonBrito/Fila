@@ -13,6 +13,7 @@ const filaVazia = document.getElementById("filaVazia");
 const contador = document.getElementById("contador");
 const btnLimpar = document.getElementById("btnLimpar");
 const statusConexao = document.getElementById("statusConexao");
+const btnEncerrar = document.getElementById("btnEncerrar");
 
 let estado = {
     roomId: null,
@@ -90,6 +91,14 @@ btnCriarSala.addEventListener("click", async () => {
     }
 });
 
+btnEncerrar.addEventListener("click", () => {
+    // if(localStorage.getItem("filaAdminSessao")){
+    //     localStorage.removeItem("filaAdminSessao");
+    // }
+
+    socket.emit("admin:encerrar-sala");
+});
+
 function mostrarAdmin() {
     telaCriar.classList.add("oculto");
     telaAdmin.classList.remove("oculto");
@@ -101,6 +110,13 @@ function conectarSocket() {
     if (!socket.connected) {
         socket.connect();
     }
+}
+
+function MostarInicio(){
+    telaCriar.classList.remove("oculto");
+    telaAdmin.classList.add("oculto");
+    inputAdminKey.value = "";
+    localStorage.removeItem("filaAdminSessao");
 }
 
 socket.on("connect", () => {
@@ -125,6 +141,11 @@ socket.on("fila-atualizada", fila => {
     mostrarFila(fila);
 });
 
+socket.on("sala-encerrada", () => {
+    mensagemAdmin.textContent = "";
+    MostarInicio();
+});
+
 socket.on("fila-limpa", () => {
     mostrarFila([]);
 });
@@ -147,8 +168,7 @@ function mostrarFila(fila) {
     listaFila.innerHTML = "";
 
     contador.textContent =
-        `${fila.length} ${
-            fila.length === 1 ? "aluno" : "alunos"
+        `${fila.length} ${fila.length === 1 ? "aluno" : "alunos"
         }`;
 
     if (fila.length === 0) {
