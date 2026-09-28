@@ -603,13 +603,16 @@ io.on("connection", socket => {
                 }
             );
 
+            const fila = await obterFila(roomId);
 
-            const fila = await emitirFila(roomId).then(() => {
-                socket.emit("fila-atualizada");
-                socket.emit(
-                    "entrou-na-fila"
-                );
-            });
+            io.to(`room:${roomId}`).emit(
+                "fila-atualizada",
+                fila
+            );
+
+            socket.emit(
+                "entrou-na-fila"
+            );
         } catch (error) {
             console.error(error);
 

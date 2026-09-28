@@ -1,4 +1,6 @@
-const socket = io();
+const socket = io({
+    autoConnect: false
+});
 
 const telaEntrada = document.getElementById("telaEntrada");
 const telaSala = document.getElementById("telaSala");
@@ -32,7 +34,7 @@ if (sessaoSalva) {
         localStorage.removeItem("filaAlunoSessao");
     }
 } else {
-    localStorage.setItem('filaAlunoSessao', JSON.stringify(estado));
+    mostrarInicio();
 }
 
 formEntrada.addEventListener("submit", async event => {
@@ -75,7 +77,6 @@ formEntrada.addEventListener("submit", async event => {
 
         mostrarSala();
         conectarSocket();
-        verificarSessao();
 
     } catch (error) {
         mensagemEntrada.textContent = error.message;
@@ -90,22 +91,28 @@ btnSairFila.addEventListener("click", () => {
     );
 
     socket.emit("aluno:sair-fila");
-    btnSairFila.classList.remove("oculto");
     mostrarInicio();
-    conectarSocket();
 });
 
 async function verificarSessao() {
     try {
+        if (
+            !estado.roomId ||
+            !estado.participantId ||
+            !estado.participantToken
+        ) {
+            localStorage.removeItem("filaAlunoSessao");
+            mostrarInicio();
+            return;
+        }
+
         let parametros = new URLSearchParams({
             roomId: estado.roomId,
             participantId: estado.participantId,
             participantToken: estado.participantToken
         });
 
-        const resposta = await fetch(
-            `/api/aluno/estado?${parametros}`
-        ); parametros
+        const resposta = await fetch(`/api/aluno/estado?${parametros}`);
 
         if (!resposta.ok) {
             throw new Error("Sessão inválida.");
@@ -158,24 +165,26 @@ function conectarSocket() {
 }
 
 socket.on("connect", () => {
-    if (localStorage.getItem("filaAlunoSessao")) {
-        socket.emit("atualizaSecaoAluno", {
-            dados: {
-                roomId: estado.roomId,
-                participantId: estado.participantId,
-                participantToken: estado.participantToken
-            }
-        });
+
+    if (
+        !estado.roomId ||
+        !estado.participantId ||
+        !estado.participantToken
+    ) {
+        socket.disconnect();
+        return;
     }
 
-    socket.emit("aluno:entrar-sala", {
+    const dadosSessao = {
         roomId: estado.roomId,
         participantId: estado.participantId,
         participantToken: estado.participantToken
-    });
+    };
 
-    verificarSessao();
+    socket.emit("aluno:entrar-sala", dadosSessao);
+    socket.emit("atualizaSecaoAluno", dadosSessao);
 });
+
 
 socket.on("fila-atualizada", fila => {
     atualizarPosicao(fila);
@@ -230,7 +239,7 @@ btnQuero.addEventListener("click", async () => {
         "Registrando...";
 
     conectarSocket();
-    await socket.emit("aluno:quero");
+    socket.emit("aluno:quero");
     atualizarBotao();
 });
 
