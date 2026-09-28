@@ -120,22 +120,37 @@ async function buscarSalaPorPIN(pin) {
 }
 
 async function obterFila(roomId) {
-    const snapshot = await db
-        .collection("salas")
-        .doc(roomId)
-        .collection("fila")
-        .orderBy("ordem", "asc")
+    const salaRef = db.collection("salas").doc(roomId);
+
+    const alunosSnapshot = await salaRef
+        .collection("alunos")
+        .where("naFila", "==", true)
         .get();
 
-    return snapshot.docs.map(doc => {
-        const data = doc.data();
+    const filaPromises = alunosSnapshot.docs.map(async alunoDoc => {
+        const filaDoc = await salaRef
+            .collection("fila")
+            .doc(alunoDoc.id)
+            .get();
+
+        if (!filaDoc.exists) {
+            return null;
+        }
+
+        const data = filaDoc.data();
 
         return {
-            id: doc.id,
-            nome: data.nome,
+            id: alunoDoc.id,
+            nome: alunoDoc.data().nome,
             ordem: data.ordem
         };
     });
+
+    const fila = await Promise.all(filaPromises);
+
+    return fila
+        .filter(item => item !== null)
+        .sort((a, b) => a.ordem - b.ordem);
 }
 
 async function emitirFila(roomId) {
@@ -361,7 +376,6 @@ io.on("connection", socket => {
                 naFila: aluno.naFila === true
             });
             const fila = await obterFila(roomId);
-
             socket.emit("fila-atualizada", fila);
         } catch (error) {
             console.error(error);
@@ -450,15 +464,16 @@ io.on("connection", socket => {
             const roomId = socket.data.roomId;
 
             const salaRef = db
-                .collection("salas");
+                .collection("salas")
+                .doc(roomId);
 
-            const snapshot = await salaRef.get();
-            const batch = db.batch()
 
-            snapshot.forEach((doc) => {
-                batch.delete(doc.ref);
-            })
-            await batch.commit();
+            await salaRef.update({
+                ativa: false
+            });
+            await apagarSubsolecao(salaRef.collection("alunos"));
+            await apagarSubsolecao(salaRef.collection("fila"));
+
             io.to(`room:${roomId}`).emit("sala-encerrada");
 
         } catch (error) {
@@ -581,11 +596,12 @@ io.on("connection", socket => {
                 }
             );
 
-            socket.emit(
-                "entrou-na-fila"
-            );
 
-            await emitirFila(roomId);
+            await emitirFila(roomId).then(() => {
+                socket.emit(
+                    "entrou-na-fila"
+                );
+            });
         } catch (error) {
             console.error(error);
 
@@ -593,6 +609,44 @@ io.on("connection", socket => {
                 "erro",
                 error.message ||
                 "Não foi possível entrar na fila."
+            );
+        }
+    });
+
+    socket.on("aluno:sair-fila", async () => {
+        try {
+            if (socket.data.role !== "aluno") {
+                return;
+            }
+
+            const roomId =
+                socket.data.roomId;
+
+            const participantId =
+                socket.data.participantId;
+
+            const salaRef = db
+                .collection("salas")
+                .doc(roomId);
+
+            const alunoRef = salaRef
+                .collection("alunos")
+                .doc(participantId);
+
+            await alunoRef.update({
+                naFila: false
+            });
+
+            const fila = await emitirFila(roomId);
+
+            socket.emit(
+                "fila-atualizada",
+                fila
+            );
+        } catch (error) {
+            console.error(error);
+            socket.emit("erro",
+                "Erro ao sair da fila."
             );
         }
     });
@@ -672,6 +726,25 @@ io.on("connection", socket => {
         );
     });
 });
+
+async function apagarSubsolecao(ref) {
+    while (true) {
+        const snapshot = await ref.limit(500).get();
+
+        if (snapshot.empty) break;
+        const batch = db.batch();
+
+        snapshot.forEach((doc => {
+            batch.delete(doc.ref);
+        }))
+
+        await batch.commit();
+
+        if (snapshot.sala < 500) {
+            break;
+        }
+    }
+}
 
 if (require.main === module) {
     httpServer.listen(PORT, () => {

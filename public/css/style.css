@@ -112,6 +112,16 @@ input:focus {
     margin-top: 30px;
 }
 
+.btnSair {
+    width: 100px;
+    color: white;
+    background-color: #680b04;
+}
+
+.btnSair:hover {
+    background-color: #800f07;
+}
+
 .mensagem {
     margin-top: 15px;
     color: #b42318;

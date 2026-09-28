@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aluno - Fila</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
     <main class="container">
 
@@ -14,23 +16,10 @@
 
             <form id="formEntrada">
                 <label for="pin">PIN da sala</label>
-                <input
-                    type="text"
-                    id="pin"
-                    maxlength="4"
-                    inputmode="numeric"
-                    placeholder="Ex.: 4827"
-                    required
-                >
+                <input type="text" id="pin" maxlength="4" inputmode="numeric" placeholder="Ex.: 4827" required>
 
                 <label for="nome">Seu nome</label>
-                <input
-                    type="text"
-                    id="nome"
-                    maxlength="100"
-                    placeholder="Digite seu nome"
-                    required
-                >
+                <input type="text" id="nome" maxlength="100" placeholder="Digite seu nome" required>
 
                 <button type="submit" class="botao botao-principal">
                     Entrar
@@ -55,7 +44,9 @@
             <button id="btnQuero" class="botao-eu-quero">
                 EU QUERO
             </button>
-
+            <button id="btnSairFila" class="botao btnSair oculto">
+                Sair
+            </button>
             <div id="posicaoAluno" class="posicao"></div>
 
             <p id="mensagemSala" class="mensagem"></p>
@@ -67,4 +58,5 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/js/aluno.js"></script>
 </body>
+
 </html>

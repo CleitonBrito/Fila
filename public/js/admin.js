@@ -71,6 +71,7 @@ btnCriarSala.addEventListener("click", async () => {
             );
         }
 
+        estado = {};
         estado = {
             roomId: dados.roomId,
             pin: dados.pin,
@@ -92,9 +93,14 @@ btnCriarSala.addEventListener("click", async () => {
 });
 
 btnEncerrar.addEventListener("click", () => {
-    // if(localStorage.getItem("filaAdminSessao")){
-    //     localStorage.removeItem("filaAdminSessao");
-    // }
+    estado.naFila = false;
+    
+    if (localStorage.getItem("filaAdminSessao")) {
+        localStorage.setItem(
+            "filaAdminSessao",
+            JSON.stringify(estado)
+        );
+    }
 
     socket.emit("admin:encerrar-sala");
 });
@@ -112,9 +118,10 @@ function conectarSocket() {
     }
 }
 
-function MostarInicio(){
+function MostarInicio() {
     telaCriar.classList.remove("oculto");
     telaAdmin.classList.add("oculto");
+    btnCriarSala.disabled = false;
     inputAdminKey.value = "";
     localStorage.removeItem("filaAdminSessao");
 }
@@ -142,6 +149,8 @@ socket.on("fila-atualizada", fila => {
 });
 
 socket.on("sala-encerrada", () => {
+    estado = {};
+    localStorage.setItem("filaAdminSessao", estado);
     mensagemAdmin.textContent = "";
     MostarInicio();
 });

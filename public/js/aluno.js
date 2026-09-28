@@ -8,6 +8,7 @@ const inputNome = document.getElementById("nome");
 const mensagemEntrada = document.getElementById("mensagemEntrada");
 const nomeAluno = document.getElementById("nomeAluno");
 const btnQuero = document.getElementById("btnQuero");
+const btnSairFila = document.getElementById("btnSairFila");
 const statusAluno = document.getElementById("statusAluno");
 const posicaoAluno = document.getElementById("posicaoAluno");
 const mensagemSala = document.getElementById("mensagemSala");
@@ -30,6 +31,8 @@ if (sessaoSalva) {
         console.error(error);
         localStorage.removeItem("filaAlunoSessao");
     }
+}else{
+    localStorage.setItem('filaAlunoSessao', JSON.stringify(estado));
 }
 
 formEntrada.addEventListener("submit", async event => {
@@ -78,6 +81,19 @@ formEntrada.addEventListener("submit", async event => {
     }
 });
 
+btnSairFila.addEventListener("click", () => {
+    estado.naFila = false;
+
+    localStorage.setItem("filaAlunoSessao",
+        JSON.stringify(estado)
+    );
+
+    socket.emit("aluno:sair-fila");
+    btnSairFila.classList.remove("oculto");
+    mostrarInicio();
+    conectarSocket();
+});
+
 async function verificarSessao() {
     try {
         const parametros = new URLSearchParams({
@@ -101,7 +117,7 @@ async function verificarSessao() {
 
         localStorage.setItem(
             "filaAlunoSessao",
-            JSON.stringify(estado)
+            estado
         );
 
         mostrarSala();
@@ -124,9 +140,10 @@ function mostrarSala() {
         `Olá, ${estado.nome}`;
 
     atualizarBotao();
+    mensagemSala.textContent = "";
 }
 
-function mostrarInicio(){
+function mostrarInicio() {
     telaEntrada.classList.remove("oculto");
     telaSala.classList.add("oculto");
 }
@@ -138,7 +155,7 @@ function conectarSocket() {
 }
 
 socket.on("connect", () => {
-    if (!estado.roomId) return;
+    if(!estado.roomId) return;
 
     socket.emit("aluno:entrar-sala", {
         roomId: estado.roomId,
@@ -153,6 +170,7 @@ socket.on("fila-atualizada", fila => {
 
 socket.on("entrou-na-fila", () => {
     estado.naFila = true;
+    btnSairFila.classList.remove("oculto");
 
     localStorage.setItem(
         "filaAlunoSessao",
@@ -166,13 +184,12 @@ socket.on("entrou-na-fila", () => {
 });
 
 socket.on("sala-encerrada", () => {
-    console.log("Entrou aqui!");
-
-    localStorage.removeItem("filaAlunoSessao");
+    estado = {};
     posicaoAluno.textContent = "";
     inputPin.value = "";
-    atualizarBotao();
     mostrarInicio();
+    mensagemSala.textContent = "";
+    atualizarBotao();
 });
 
 socket.on("fila-limpa", () => {
@@ -196,15 +213,15 @@ socket.on("erro", mensagem => {
     btnQuero.disabled = estado.naFila;
 });
 
-btnQuero.addEventListener("click", () => {
-    if (estado.naFila) return;
-
+btnQuero.addEventListener("click", async () => {
     btnQuero.disabled = true;
 
     mensagemSala.textContent =
         "Registrando...";
 
-    socket.emit("aluno:quero");
+    conectarSocket();
+    await socket.emit("aluno:quero");
+    atualizarBotao();
 });
 
 function atualizarBotao() {
