@@ -21,7 +21,7 @@ let estado = {
     naFila: false
 };
 
-const sessaoSalva = localStorage.getItem("filaAlunoSessao");
+let sessaoSalva = localStorage.getItem("filaAlunoSessao");
 
 if (sessaoSalva) {
     try {
@@ -31,7 +31,7 @@ if (sessaoSalva) {
         console.error(error);
         localStorage.removeItem("filaAlunoSessao");
     }
-}else{
+} else {
     localStorage.setItem('filaAlunoSessao', JSON.stringify(estado));
 }
 
@@ -75,6 +75,7 @@ formEntrada.addEventListener("submit", async event => {
 
         mostrarSala();
         conectarSocket();
+        verificarSessao();
 
     } catch (error) {
         mensagemEntrada.textContent = error.message;
@@ -96,7 +97,7 @@ btnSairFila.addEventListener("click", () => {
 
 async function verificarSessao() {
     try {
-        const parametros = new URLSearchParams({
+        let parametros = new URLSearchParams({
             roomId: estado.roomId,
             participantId: estado.participantId,
             participantToken: estado.participantToken
@@ -104,7 +105,7 @@ async function verificarSessao() {
 
         const resposta = await fetch(
             `/api/aluno/estado?${parametros}`
-        );
+        ); parametros
 
         if (!resposta.ok) {
             throw new Error("Sessão inválida.");
@@ -117,11 +118,12 @@ async function verificarSessao() {
 
         localStorage.setItem(
             "filaAlunoSessao",
-            estado
+            JSON.stringify(estado)
         );
 
         mostrarSala();
         conectarSocket();
+        socket.emit("atualizaSecaoAluno", estado);
 
     } catch (error) {
         console.error(error);
@@ -135,6 +137,7 @@ async function verificarSessao() {
 function mostrarSala() {
     telaEntrada.classList.add("oculto");
     telaSala.classList.remove("oculto");
+    btnSairFila.classList.add("oculto");
 
     nomeAluno.textContent =
         `Olá, ${estado.nome}`;
@@ -155,13 +158,23 @@ function conectarSocket() {
 }
 
 socket.on("connect", () => {
-    if(!estado.roomId) return;
+    if (localStorage.getItem("filaAlunoSessao")) {
+        socket.emit("atualizaSecaoAluno", {
+            dados: {
+                roomId: estado.roomId,
+                participantId: estado.participantId,
+                participantToken: estado.participantToken
+            }
+        });
+    }
 
     socket.emit("aluno:entrar-sala", {
         roomId: estado.roomId,
         participantId: estado.participantId,
         participantToken: estado.participantToken
     });
+
+    verificarSessao();
 });
 
 socket.on("fila-atualizada", fila => {
@@ -172,11 +185,6 @@ socket.on("entrou-na-fila", () => {
     estado.naFila = true;
     btnSairFila.classList.remove("oculto");
 
-    localStorage.setItem(
-        "filaAlunoSessao",
-        JSON.stringify(estado)
-    );
-
     atualizarBotao();
 
     mensagemSala.textContent =
@@ -184,12 +192,14 @@ socket.on("entrou-na-fila", () => {
 });
 
 socket.on("sala-encerrada", () => {
-    estado = {};
     posicaoAluno.textContent = "";
     inputPin.value = "";
     mostrarInicio();
+    btnSairFila.classList.add("oculto");
     mensagemSala.textContent = "";
     atualizarBotao();
+
+    socket.emit("fila-atualizada");
 });
 
 socket.on("fila-limpa", () => {
@@ -229,11 +239,13 @@ function atualizarBotao() {
         btnQuero.disabled = true;
         btnQuero.textContent = "VOCÊ ESTÁ NA FILA";
         statusAluno.textContent = "Aguarde sua vez.";
+        btnSairFila.classList.remove("oculto");
     } else {
         btnQuero.disabled = false;
         btnQuero.textContent = "EU QUERO";
         statusAluno.textContent =
             "Você ainda não entrou na fila.";
+        btnSairFila.classList.add("oculto");
     }
 }
 

@@ -331,6 +331,12 @@ app.get("/api/aluno/estado", async (req, res) => {
 io.on("connection", socket => {
     console.log("Socket conectado:", socket.id);
 
+    socket.on("atualizaSecaoAluno", dados => {
+        socket.data.roomId = dados.roomId,
+            socket.data.participantId = dados.participantId,
+            socket.data.participantToken = dados.participantToken
+    });
+
     socket.on("aluno:entrar-sala", async dados => {
         try {
             const {
@@ -376,7 +382,7 @@ io.on("connection", socket => {
                 naFila: aluno.naFila === true
             });
             const fila = await obterFila(roomId);
-            socket.emit("fila-atualizada", fila);
+            io.to(`room:${roomId}`).emit("fila-atualizada", fila);
         } catch (error) {
             console.error(error);
             socket.emit("erro", "Erro ao conectar à sala.");
@@ -471,9 +477,10 @@ io.on("connection", socket => {
             await salaRef.update({
                 ativa: false
             });
-            await apagarSubsolecao(salaRef.collection("alunos"));
-            await apagarSubsolecao(salaRef.collection("fila"));
+            await apagarSubselecoes(salaRef.collection("alunos"));
+            await apagarSubselecoes(salaRef.collection("fila"));
 
+            io.to(`room:${roomId}`).emit("fila-atualizada");
             io.to(`room:${roomId}`).emit("sala-encerrada");
 
         } catch (error) {
@@ -597,7 +604,8 @@ io.on("connection", socket => {
             );
 
 
-            await emitirFila(roomId).then(() => {
+            const fila = await emitirFila(roomId).then(() => {
+                socket.emit("fila-atualizada");
                 socket.emit(
                     "entrou-na-fila"
                 );
@@ -637,12 +645,9 @@ io.on("connection", socket => {
                 naFila: false
             });
 
-            const fila = await emitirFila(roomId);
+            const fila = await obterFila(roomId);
+            io.to(`room:${roomId}`).emit("fila-atualizada", fila);
 
-            socket.emit(
-                "fila-atualizada",
-                fila
-            );
         } catch (error) {
             console.error(error);
             socket.emit("erro",
@@ -727,7 +732,7 @@ io.on("connection", socket => {
     });
 });
 
-async function apagarSubsolecao(ref) {
+async function apagarSubselecoes(ref) {
     while (true) {
         const snapshot = await ref.limit(500).get();
 

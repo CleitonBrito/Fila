@@ -94,12 +94,18 @@ btnCriarSala.addEventListener("click", async () => {
 
 btnEncerrar.addEventListener("click", () => {
     estado.naFila = false;
-    
+
     if (localStorage.getItem("filaAdminSessao")) {
         localStorage.setItem(
             "filaAdminSessao",
             JSON.stringify(estado)
         );
+    }
+
+    if (localStorage.getItem("filaAlunoSessao")) {
+        let localALuno = JSON.parse(localStorage.getItem("filaAlunoSessao"));
+        localALuno.naFila = false;
+        localStorage.setItem("filaAlunoSessao", JSON.stringify(localALuno));
     }
 
     socket.emit("admin:encerrar-sala");
@@ -129,10 +135,21 @@ function MostarInicio() {
 socket.on("connect", () => {
     statusConexao.textContent = "Conectado";
 
+    if (localStorage.getItem("filaAlunoSessao")) {
+        localStorage.removeItem("filaAlunoSessao");
+    }
+
+    if (localStorage.getItem("filaAdminSessao")) {
+        if (!estado.roomId)
+            localStorage.removeItem("filaAdminSessao");
+    }
+
     socket.emit("admin:entrar-sala", {
         roomId: estado.roomId,
         adminToken: estado.adminToken
     });
+
+    socket.emit("fila-atualizada");
 });
 
 socket.on("disconnect", () => {
@@ -150,7 +167,13 @@ socket.on("fila-atualizada", fila => {
 
 socket.on("sala-encerrada", () => {
     estado = {};
-    localStorage.setItem("filaAdminSessao", estado);
+    localStorage.setItem("filaAdminSessao",
+        JSON.stringify(estado)
+    );
+
+    if (localStorage.getItem("filaAlunoSessao")) {
+        localStorage.removeItem("filaAlunoSessao");
+    }
     mensagemAdmin.textContent = "";
     MostarInicio();
 });
@@ -170,26 +193,29 @@ btnLimpar.addEventListener("click", () => {
 
     if (!confirmar) return;
 
+    socket.emit("sala-encerrada");
     socket.emit("admin:limpar-fila");
 });
 
 function mostrarFila(fila) {
     listaFila.innerHTML = "";
 
-    contador.textContent =
-        `${fila.length} ${fila.length === 1 ? "aluno" : "alunos"
-        }`;
+    if (fila) {
+        contador.textContent =
+            `${fila.length} ${fila.length === 1 ? "aluno" : "alunos"
+            }`;
 
-    if (fila.length === 0) {
-        filaVazia.classList.remove("oculto");
-        return;
+        if (fila.length === 0) {
+            filaVazia.classList.remove("oculto");
+            return;
+        }
+
+        filaVazia.classList.add("oculto");
+
+        fila.forEach(aluno => {
+            const li = document.createElement("li");
+            li.textContent = aluno.nome;
+            listaFila.appendChild(li);
+        });
     }
-
-    filaVazia.classList.add("oculto");
-
-    fila.forEach(aluno => {
-        const li = document.createElement("li");
-        li.textContent = aluno.nome;
-        listaFila.appendChild(li);
-    });
 }
